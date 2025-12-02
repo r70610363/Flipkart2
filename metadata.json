@@ -1,0 +1,5 @@
+{
+  "name": "Flipkart",
+  "description": "A modern, responsive e-commerce platform with admin capabilities, mock payment, and AI-powered product descriptions.",
+  "requestFramePermissions": []
+}

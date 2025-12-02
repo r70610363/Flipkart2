@@ -20,6 +20,10 @@ Cashfree.XEnvironment = 'PROD';
 
 // --- API Endpoints ---
 
+app.get('/', (req, res) => {
+    res.json({ message: 'API is running' });
+});
+
 // 1. Send OTP
 app.post('/send-otp', (req, res) => {
     const { mobile } = req.body;

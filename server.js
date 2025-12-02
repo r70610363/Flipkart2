@@ -16,7 +16,7 @@ app.use(express.json());
 // --- Cashfree Initialization ---
 Cashfree.XClientId = process.env.CASHFREE_APP_ID || "";
 Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY || "";
-Cashfree.XEnvironment = Cashfree.Environment.PRODUCTION;
+Cashfree.XEnvironment = 'PROD';
 
 // --- API Endpoints ---
 

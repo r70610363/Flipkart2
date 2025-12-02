@@ -4,12 +4,13 @@ import { API_BASE_URL, ENABLE_API } from './config';
 // In-memory fallback store for simulation
 const mockOtpStore: Record<string, { code: string; expiresAt: number }> = {};
 
-export const sendOtp = async (mobileNumber: string): Promise<{ success: boolean; message: string; devCode?: string }> => {
+// IMPORTANT: In a real app, never return the OTP code in the response.
+// This is only for simulation purposes.
+export const sendOtp = async (mobileNumber: string): Promise<{ success: boolean; message: string }> => {
     
     // 1. Try connecting to Real Backend if Enabled
     if (ENABLE_API) {
         try {
-            // This is where your future Node.js backend will trigger the Email/SMS
             const response = await fetch(`${API_BASE_URL}/send-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -18,31 +19,31 @@ export const sendOtp = async (mobileNumber: string): Promise<{ success: boolean;
 
             const data = await response.json();
             if (data.success) {
-                return { success: true, message: data.message, devCode: data.devCode };
+                // The backend should NEVER return the OTP. Just a confirmation.
+                return { success: true, message: data.message };
             }
         } catch (error) {
-            console.log("Backend not reachable. Switching to Simulation Mode.");
+            console.log("Backend not reachable for OTP. Switching to Simulation Mode.");
         }
     }
 
     // 2. Fallback: Simulation Mode (Frontend Only)
     return new Promise((resolve) => {
-        // Generate Random 4-digit OTP
         const otp = Math.floor(1000 + Math.random() * 9000).toString(); 
         
-        console.log(`[Mock Backend] Triggering Email/SMS to ${mobileNumber} with code: ${otp}`);
+        // In a real scenario, this console.log would not exist. The OTP would be sent via SMS/Email only.
+        console.log(`[Mock Backend] OTP for ${mobileNumber} is: ${otp}`);
         
         mockOtpStore[mobileNumber] = {
             code: otp,
-            expiresAt: Date.now() + 5 * 60 * 1000
+            expiresAt: Date.now() + 5 * 60 * 1000 // OTP expires in 5 minutes
         };
 
-        // Simulate network delay
         setTimeout(() => {
+            // The OTP is no longer returned in the response for security reasons.
             resolve({ 
                 success: true, 
-                message: `OTP Sent to ${mobileNumber}`,
-                devCode: otp 
+                message: `OTP has been sent to ${mobileNumber}`
             });
         }, 1000);
     });
@@ -59,11 +60,10 @@ export const verifyOtp = async (mobileNumber: string, code: string): Promise<{ s
             });
 
             const data = await response.json();
-            if (response.ok && data.success) {
-                return { success: true, message: "Verification Successful" };
-            }
+            return { success: data.success, message: data.message };
+
         } catch (error) {
-            // Ignore backend error and check local mock
+            console.log("Backend not reachable. Verifying with Mock OTP.");
         }
     }
 
@@ -72,9 +72,11 @@ export const verifyOtp = async (mobileNumber: string, code: string): Promise<{ s
         setTimeout(() => {
             const session = mockOtpStore[mobileNumber];
             
-            // STRICT CHECK: Code must match generated OTP
-            if (session && session.code === code) {
+            if (session && session.code === code && Date.now() < session.expiresAt) {
+                delete mockOtpStore[mobileNumber]; // OTP is used, delete it.
                 resolve({ success: true, message: "Verification Successful" });
+            } else if (session && Date.now() >= session.expiresAt) {
+                resolve({ success: false, message: "OTP has expired" });
             } else {
                 resolve({ success: false, message: "Invalid OTP" });
             }

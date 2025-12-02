@@ -1,11 +1,12 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShop } from '../context/ShopContext';
 import { createOrder, initiatePayment } from '../services/data';
-import { ShieldCheck, ArrowLeft, AlertCircle, TestTube } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, AlertCircle } from 'lucide-react';
 import { Address, OrderStatus } from '../types';
+
+declare const Cashfree: any;
 
 export const Payment: React.FC = () => {
   const { checkoutItems, user, shippingAddress, completeOrder, addNotification } = useShop();
@@ -15,12 +16,9 @@ export const Payment: React.FC = () => {
   const [upiApp, setUpiApp] = useState('phonepe'); // Default UPI App
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // Ref to track if payment successfully finished to prevent redirect race condition
   const isPaymentCompleted = useRef(false);
 
-  // Validate flow
   useEffect(() => {
-      // If we just paid, don't redirect to cart even if items are cleared
       if (isPaymentCompleted.current) return;
 
       if (!shippingAddress || checkoutItems.length === 0) {
@@ -33,11 +31,20 @@ export const Payment: React.FC = () => {
   const shipping = subtotal > 500 ? 0 : 50;
   const total = subtotal + shipping;
 
+  const initiateCashfreePayment = (sessionId: string) => {
+    if (window.Cashfree) {
+      const cashfree = new (window as any).Cashfree(sessionId);
+      cashfree.redirect();
+    } else {
+        console.error("Cashfree SDK not loaded");
+        alert("Payment gateway is not available. Please try again later.");
+    }
+  }
+
   const handlePay = async () => {
     setIsProcessing(true);
 
     try {
-        // 1. Create a pending order locally first
         const orderId = `ORD-${Date.now()}`;
         const newOrder = {
             id: orderId,
@@ -50,38 +57,21 @@ export const Payment: React.FC = () => {
             paymentMethod: paymentMethod === 'upi' ? `UPI - ${upiApp}` : 'Card/NetBanking'
         };
 
-        // 2. Call Backend to initiate Paytm/Gateway Transaction
-        const paymentResponse = await initiatePayment(total, orderId, user?.email || '', user?.name || '');
+        const paymentResponse = await initiatePayment(total, orderId, user?.email || '', user?.mobile || '');
 
-        if (paymentResponse.success) {
-            // Mark as completed so useEffect doesn't redirect to cart when we clear items
+        if (paymentResponse && paymentResponse.payment_session_id) {
             isPaymentCompleted.current = true;
 
-            // Save pending order and Redirect user to Backend/Gateway
             await createOrder(newOrder);
-            completeOrder(); // Clear cart items
+            completeOrder();
             
-            // Trigger Notification
             addNotification("Order Placed Successfully", `Your order ${orderId} has been confirmed.`, `/my-orders`);
 
-            if (paymentResponse.redirectUrl && paymentResponse.redirectUrl.startsWith('http')) {
-                 // Actual Redirect to Payment Gateway
-                 window.location.href = paymentResponse.redirectUrl;
-            } else {
-                 // Fallback / Simulation Redirect
-                 navigate(`/order-success/${orderId}`);
-            }
+            initiateCashfreePayment(paymentResponse.payment_session_id);
+
         } else {
-            // Fallback Simulation (If backend is offline or mock mode)
-            // This block runs for TESTING
-            isPaymentCompleted.current = true;
-            
-            setTimeout(() => {
-                createOrder({ ...newOrder, status: 'Ordered' });
-                completeOrder();
-                addNotification("Order Placed Successfully", `Your order ${orderId} has been confirmed.`, `/my-orders`);
-                navigate(`/order-success/${orderId}`);
-            }, 2000);
+            alert("Could not initiate payment. Please try again or contact support.");
+            setIsProcessing(false);
         }
 
     } catch (error) {
@@ -95,27 +85,15 @@ export const Payment: React.FC = () => {
     <div className="min-h-screen bg-[#f1f3f6] pb-20 md:pb-8 font-sans page-animate">
         <div className="container mx-auto px-0 md:px-4 pt-2 md:pt-6 max-w-[1100px]">
             
-            {/* Header Mobile */}
              <div className="bg-[#2874f0] p-4 text-white md:hidden flex items-center gap-3 sticky top-0 z-10 shadow-md">
                 <button onClick={() => navigate('/order-summary')}><ArrowLeft className="w-6 h-6" /></button>
                 <span className="font-medium text-lg">Payments</span>
             </div>
 
-            {/* TEST MODE BANNER */}
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4 mx-2 md:mx-0 rounded-r shadow-sm flex items-start gap-3">
-                <TestTube className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                <div>
-                    <h3 className="text-sm font-bold text-yellow-700">Test Mode Active</h3>
-                    <p className="text-xs text-yellow-600">No real money will be deducted. Click Pay to simulate a successful order.</p>
-                </div>
-            </div>
-
             <div className="flex flex-col lg:flex-row gap-4 mt-2 md:mt-4">
                  
-                 {/* Left: Payment Options */}
                  <div className="flex-1">
                     
-                    {/* Steps (Desktop) */}
                     <div className="bg-white shadow-sm mb-4 hidden md:flex rounded-[2px] overflow-hidden text-sm">
                         <div className="flex-1 p-3 border-r border-slate-200 text-slate-400 font-medium flex items-center gap-2 bg-slate-50">
                             <span className="bg-slate-200 text-slate-500 w-5 h-5 flex items-center justify-center text-[10px] rounded font-bold">1</span> Login <span className="ml-auto text-slate-800 font-bold text-xs">✓</span>
@@ -131,13 +109,11 @@ export const Payment: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Payment Methods List */}
                     <div className="bg-white shadow-sm rounded-[2px] overflow-hidden border border-slate-100">
                         <div className="p-3 bg-[#2874f0] text-white font-medium text-sm uppercase tracking-wide flex justify-between items-center">
                             <span>Payment Options</span>
                         </div>
 
-                        {/* 1. UPI Options */}
                         <div className={`border-b border-slate-100 transition-colors ${paymentMethod === 'upi' ? 'bg-blue-50/20' : 'bg-white'}`}>
                             <label className="flex items-start gap-4 p-4 cursor-pointer">
                                 <input type="radio" name="pm" className="mt-1 w-4 h-4 accent-[#2874f0]" checked={paymentMethod === 'upi'} onChange={() => setPaymentMethod('upi')} />
@@ -180,7 +156,6 @@ export const Payment: React.FC = () => {
                             </label>
                         </div>
 
-                        {/* 2. Wallets / Postpaid */}
                         <div className={`border-b border-slate-100 transition-colors ${paymentMethod === 'wallet' ? 'bg-blue-50/20' : 'bg-white'}`}>
                             <label className="flex items-start gap-4 p-4 cursor-pointer">
                                 <input type="radio" name="pm" className="mt-1 w-4 h-4 accent-[#2874f0]" checked={paymentMethod === 'wallet'} onChange={() => setPaymentMethod('wallet')} />
@@ -201,7 +176,6 @@ export const Payment: React.FC = () => {
                             </label>
                         </div>
 
-                        {/* 3. Credit / Debit / ATM Card */}
                         <div className={`border-b border-slate-100 transition-colors ${paymentMethod === 'card' ? 'bg-blue-50/20' : 'bg-white'}`}>
                             <label className="flex items-start gap-4 p-4 cursor-pointer">
                                 <input type="radio" name="pm" className="mt-1 w-4 h-4 accent-[#2874f0]" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} />
@@ -224,7 +198,6 @@ export const Payment: React.FC = () => {
                             </label>
                         </div>
 
-                        {/* 4. Net Banking */}
                         <div className={`border-b border-slate-100 transition-colors ${paymentMethod === 'netbanking' ? 'bg-blue-50/20' : 'bg-white'}`}>
                             <label className="flex items-start gap-4 p-4 cursor-pointer">
                                 <input type="radio" name="pm" className="mt-1 w-4 h-4 accent-[#2874f0]" checked={paymentMethod === 'netbanking'} onChange={() => setPaymentMethod('netbanking')} />
@@ -248,7 +221,6 @@ export const Payment: React.FC = () => {
                             </label>
                         </div>
 
-                        {/* 5. Cash on Delivery (Disabled) */}
                         <div className="bg-slate-50 opacity-70 cursor-not-allowed">
                             <div className="flex items-start gap-4 p-4">
                                 <input type="radio" disabled className="mt-1 w-4 h-4 accent-slate-400" />
@@ -272,7 +244,6 @@ export const Payment: React.FC = () => {
                     </div>
                  </div>
 
-                 {/* Right: Summary */}
                 <div className="lg:w-1/3 w-full hidden md:block">
                    <div className="bg-white shadow-sm border border-slate-100 sticky top-20 rounded-[2px] overflow-hidden">
                       <div className="p-4 border-b border-slate-100 bg-slate-50">

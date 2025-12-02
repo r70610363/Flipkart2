@@ -22,8 +22,8 @@ import { TrackOrder } from './pages/TrackOrder';
 
 function App() {
   return (
-    <ShopProvider>
-      <HashRouter>
+    <HashRouter>
+      <ShopProvider>
         <ScrollToTop />
         <Routes>
           <Route path="/admin" element={<Admin />} />
@@ -47,8 +47,8 @@ function App() {
             </Layout>
           } />
         </Routes>
-      </HashRouter>
-    </ShopProvider>
+      </ShopProvider>
+    </HashRouter>
   );
 }
 
